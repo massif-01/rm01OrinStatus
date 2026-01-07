@@ -268,7 +268,9 @@ class ModelServiceMonitor:
                 
                 # If 100%, mark startup complete BEFORE updating status
                 if progress == 100:
-                    self._startup_complete = True
+                    # Use lock to ensure thread-safe update of startup_complete
+                    with self._lock:
+                        self._startup_complete = True
                     # Cancel any existing timer
                     if self._info_timer:
                         self._info_timer.cancel()
@@ -284,13 +286,15 @@ class ModelServiceMonitor:
         if not self._model_name:
             name_match = re.search(self.MODEL_NAME_PATTERN, line)
             if name_match:
-                self._model_name = name_match.group(1)
+                with self._lock:
+                    self._model_name = name_match.group(1)
                 logger.info(f"{self.service_name}: Found model name: {self._model_name}")
         
         if not self._api_port:
             port_match = re.search(self.API_PORT_PATTERN, line)
             if port_match:
-                self._api_port = port_match.group(1)
+                with self._lock:
+                    self._api_port = port_match.group(1)
                 logger.info(f"{self.service_name}: Found API port: {self._api_port}")
     
     def _extract_model_info(self) -> None:
