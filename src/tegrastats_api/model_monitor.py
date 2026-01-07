@@ -181,7 +181,10 @@ class ModelServiceMonitor:
         
         # Service is active, start following logs
         try:
-            cmd = ["journalctl", "-u", self.service_name, "-f", "-n", "50"]
+            # Get more historical lines to ensure we capture startup logs
+            # LLM startup can be verbose, so we need more lines
+            history_lines = 300 if self.model_type == "llm" else 200
+            cmd = ["journalctl", "-u", self.service_name, "-f", "-n", str(history_lines)]
             self._process = subprocess.Popen(
                 cmd,
                 stdout=subprocess.PIPE,
