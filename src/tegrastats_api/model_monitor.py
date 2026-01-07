@@ -262,9 +262,8 @@ class ModelServiceMonitor:
         for pattern, progress in self.CHECKPOINTS:
             if re.search(pattern, line, re.IGNORECASE):
                 logger.debug(f"{self.service_name}: Checkpoint reached - {progress}%")
-                self._update_status(progress, f"{progress}%", True)
                 
-                # If 100%, mark startup complete and schedule info extraction
+                # If 100%, mark startup complete BEFORE updating status
                 if progress == 100:
                     self._startup_complete = True
                     # Cancel any existing timer
@@ -273,6 +272,9 @@ class ModelServiceMonitor:
                     # Wait 5 seconds then extract model info
                     self._info_timer = threading.Timer(5.0, self._extract_model_info)
                     self._info_timer.start()
+                
+                # Update status (this will trigger callback with correct startup_complete flag)
+                self._update_status(progress, f"{progress}%", True)
                 break
         
         # Try to extract model name and port immediately when seen
@@ -299,8 +301,10 @@ class ModelServiceMonitor:
             self._update_status(100, status_text, True)
             logger.info(f"{self.service_name}: Startup complete - {status_text}")
         else:
-            # Keep showing 100% if we couldn't extract info
-            logger.warning(f"{self.service_name}: Could not extract model info")
+            # Keep showing 100% if we couldn't extract info, but still update to trigger callback
+            status_text = f"已启动 | 100%"
+            self._update_status(100, status_text, True)
+            logger.warning(f"{self.service_name}: Could not extract model info, showing generic completion")
     
     def _update_status(self, progress: int, status_text: str, is_enabled: bool) -> None:
         """Update internal status and call callback."""
