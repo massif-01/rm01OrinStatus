@@ -25,6 +25,7 @@ __license__ = "MIT"
 from .server import TegrastatsServer, ConnectionLimiter
 from .parser import TegrastatsParser
 from .config import Config
+from .model_monitor import ModelMonitor
 from .cli import main as cli_main
 
 __all__ = [
@@ -32,6 +33,7 @@ __all__ = [
     "TegrastatsParser", 
     "Config",
     "ConnectionLimiter",
+    "ModelMonitor",
     "cli_main",
     "__version__",
 ]

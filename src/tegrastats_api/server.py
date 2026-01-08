@@ -14,6 +14,7 @@ from flask_cors import CORS
 
 from .config import Config
 from .parser import TegrastatsParser
+from .model_monitor import ModelMonitor
 
 
 logger = logging.getLogger(__name__)
@@ -82,6 +83,7 @@ class TegrastatsServer:
         # Initialize components
         self.parser = TegrastatsParser(interval=self.config.tegrastats_interval)
         self.limiter = ConnectionLimiter(max_connections=self.config.max_connections)
+        self.model_monitor = ModelMonitor(max_log_lines=500)
         
         # Setup routes and events
         self._setup_routes()
@@ -164,6 +166,29 @@ class TegrastatsServer:
                 'power': data['power'],
                 'timestamp': datetime.utcnow().isoformat() + 'Z'
             })
+        
+        @self.app.route('/api/model_status', methods=['GET'])
+        def model_status():
+            """Get model status information."""
+            status = self.model_monitor.get_all_status()
+            return jsonify(status)
+        
+        @self.app.route('/api/model_logs/<model_type>', methods=['GET'])
+        def model_logs(model_type):
+            """Get model logs for a specific model."""
+            lines = request.args.get('lines', default=100, type=int)
+            lines = min(lines, 1000)  # Cap at 1000 lines
+            
+            if model_type not in ['llm', 'embedding', 'reranker']:
+                return jsonify({'error': 'Invalid model type'}), 400
+            
+            logs = self.model_monitor.get_logs(model_type, lines)
+            return jsonify({
+                'model_type': model_type,
+                'logs': logs,
+                'count': len(logs),
+                'timestamp': datetime.utcnow().isoformat() + 'Z'
+            })
     
     def _setup_socketio_events(self) -> None:
         """Setup SocketIO event handlers."""
@@ -200,6 +225,7 @@ class TegrastatsServer:
         while self._running:
             try:
                 if self.limiter.get_count() > 0:
+                    # Send tegrastats data
                     data = self.parser.get_current_status()
                     if data:
                         # Add timestamp
@@ -207,7 +233,12 @@ class TegrastatsServer:
                         
                         # Emit to all connected clients
                         self.socketio.emit('tegrastats_update', data)
-                        logger.debug(f"向 {self.limiter.get_count()} 个客户端发送数据更新")
+                        logger.debug(f"向 {self.limiter.get_count()} 个客户端发送tegrastats数据更新")
+                    
+                    # Send model status data
+                    model_status = self.model_monitor.get_all_status()
+                    self.socketio.emit('model_status_update', model_status)
+                    logger.debug(f"向 {self.limiter.get_count()} 个客户端发送模型状态更新")
                 
                 time.sleep(self.config.update_interval)
                 
@@ -222,6 +253,9 @@ class TegrastatsServer:
         try:
             # Start tegrastats parser
             self.parser.start()
+            
+            # Start model monitor
+            self.model_monitor.start()
             
             # Start data update thread
             self._running = True
@@ -246,6 +280,9 @@ class TegrastatsServer:
         
         # Stop parser
         self.parser.stop()
+        
+        # Stop model monitor
+        self.model_monitor.stop()
         
         logger.info("服务器已关闭")
     
