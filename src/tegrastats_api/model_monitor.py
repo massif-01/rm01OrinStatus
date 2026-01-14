@@ -184,7 +184,9 @@ class ModelServiceMonitor:
             # Get more historical lines to ensure we capture startup logs
             # LLM startup can be verbose, so we need more lines
             history_lines = 300 if self.model_type == "llm" else 200
-            cmd = ["journalctl", "-u", self.service_name, "-f", "-n", str(history_lines)]
+            # Use stdbuf to force line-buffered output from journalctl
+            # This prevents log lines from getting stuck in journalctl's buffer
+            cmd = ["stdbuf", "-oL", "journalctl", "-u", self.service_name, "-f", "-n", str(history_lines)]
             self._process = subprocess.Popen(
                 cmd,
                 stdout=subprocess.PIPE,
